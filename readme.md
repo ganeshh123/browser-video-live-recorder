@@ -2,7 +2,7 @@
 
 A media recording addon for Firefox.
 
-AMO: []()
+AMO: https://addons.mozilla.org/en-US/firefox/addon/live-recorder/
 
 uhhh.. what else is there to say? Please report bugs, build new features, anything. Recommend posting an issue before starting work on a new feature.
 
