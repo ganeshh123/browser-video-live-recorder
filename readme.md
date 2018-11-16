@@ -20,7 +20,7 @@ Title metadata would be nice.
 
 Seeking video stops recording, not something that should happen, really. Call `requestData` or whatever, then pause and wait for onplaying event, then resume. Works? Not? Dunno.
 
-Some addon is breaking middle-clicking on the preview.
+Some ~~addon~~ about:config flag is breaking middle-clicking on the preview.
 
 ## License
 
