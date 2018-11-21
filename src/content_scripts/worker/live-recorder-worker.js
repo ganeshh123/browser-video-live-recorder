@@ -1,6 +1,6 @@
 // https://github.com/yusitnikov/fix-webm-duration/
 // ^with slight modifications.
-import ysFixWebmDuration from '../../lib/fix-webm-duration.js'
+import ysFixWebmDuration from '../../lib/fix-webm-duration/fix-webm-duration.js'
 
 /** 
  * Getting duration tag right w/o tracking it during recording.

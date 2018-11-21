@@ -1,6 +1,6 @@
 {
   "name": "Live Recorder",
-  "version": "1.0",
+  "version": "1.1",
   "manifest_version": 2,
   "description": "Record audio and video in real time.",
   "homepage_url": "https://gitlab.com/losnappas/Live-Recorder",
@@ -10,15 +10,16 @@
     ]
   },
   "browser_action": {
+	  "default_icon": "/icons/rec-button.svg",
 	  "browser_style": true,
-	  "default_title": "Start recording."
+	  "default_title": "Start recording"
   },
 	
   "permissions": [
 	"activeTab"
   ],
   "web_accessible_resources": [
-	  "live-recorder-worker-bundle.js"
+	  "/live-recorder-worker-bundle.js"
   ]
 }
 

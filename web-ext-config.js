@@ -12,6 +12,8 @@ module.exports = {
 		overwriteDest: true
 	},
 	ignoreFiles: [
+		'*config.js',
+		'icons/*.png',
 		'**/*.webm',
 		'small.ogv',
 		'**/!(manifest).json',
