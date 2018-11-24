@@ -15,6 +15,8 @@ module.exports = {
 		'*config.js',
 		'icons/*.png',
 		'**/*.webm',
+		'Screenshots',
+		'icons/*.png',
 		'small.ogv',
 		'**/!(manifest).json',
 		'**/*.html',

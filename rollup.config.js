@@ -1,4 +1,5 @@
 import resolve from 'rollup-plugin-node-resolve'
+import commonjs from 'rollup-plugin-commonjs'
 
 export default [
 	{
@@ -26,7 +27,11 @@ export default [
 		plugins: [
 			resolve({
 				jsnext: true,
-				browser: true
+				browser: true,
+				main: true
+			}),
+			commonjs({
+				include: 'node_modules/minimal-timer/index.js'
 			})
 		]
 	}

@@ -24,7 +24,7 @@ Imo, most needed feature: filesize tracker. Ondata event should fire and update 
 
 A 'max size' feature. Stop recording before/upon video reaches a certain filesize (user decides).
 
-Duration metadata has bugs. Decoding into base64 data url is not great.
+~~Duration metadata has bugs. Decoding into base64 data url is not great.~~ done (hopeful)
 
 Pause/play + webm duration metadata = bugged.
 

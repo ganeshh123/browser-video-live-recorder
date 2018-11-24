@@ -2,7 +2,7 @@
 import HyperHTMLElement from 'hyperhtml-element'
 //import ysFixWebmDuration from './fix-webm-duration.js'
 import Popper from 'popper.js'
-
+import timer from 'minimal-timer'
 const EXT = '.webm'
 
 /** 
@@ -59,6 +59,8 @@ export default class LiveRecorder extends HyperHTMLElement {
 			// this.data doesn't affect render.
 			this.data = []
 			this.audioIsConnected = false
+			// Things don't need 'new' "now"?
+			this.timer = timer()
 
 			let title = this.targetElement.src.split('/')
 			title = title[title.length-1]
@@ -230,9 +232,11 @@ export default class LiveRecorder extends HyperHTMLElement {
 			switch (this.state.recorder.state) {
 				case 'recording':
 					this.state.recorder.pause()
+					this.timer.stop()
 					break
 				case 'paused':
 					this.state.recorder.resume()
+					this.timer.resume()
 					break
 				default:
 					log('handlepause switch defaulted. state:', this.state)
@@ -292,7 +296,8 @@ export default class LiveRecorder extends HyperHTMLElement {
 		 * by the website.
 		 */
 		const stopped = new Promise((res, rej) => {
-			recorder.onstop = () => res('stopped')
+			recorder.onstop = () => res(this.timer.stop())
+				
 			recorder.onerror = rej
 		})
 
@@ -303,7 +308,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 
 		const started = new Promise(res => {
 			// Will throw (reject) if start fails.
-			recorder.onstart = () => res('started')
+			recorder.onstart = () => res(this.timer.start())
 			recorder.start()
 		})
 
@@ -349,7 +354,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 		log('preocessing')
 		const buggyBlob = new Blob(this.data, { type: 'video/webm' })
 		// Send to worker.
-		const blob = await workIt(buggyBlob)
+		const blob = await workIt(buggyBlob, this.timer.elapsedTime())
 		// Creating the url in the worker results in CSP fiesta.
 		// "Cannot load from moz-exte...."
 		const downloadURL = URL.createObjectURL(blob)
@@ -400,7 +405,8 @@ function log(...args) {
  * Messaging between worker to create a good blob.
  * Good = duration fixed.
  */
-function workIt(buggyBlob){
+function workIt(buggyBlob, duration){
+	log('duration', duration)
 	return new Promise((resolve, reject) => {
 		window.liveRecorder.worker.onmessage = e => {
 			// url is the base64 url created by worker.
@@ -411,44 +417,9 @@ function workIt(buggyBlob){
 			// and using the blob for src there. Save 1 decode round.
 			// ^But doesn't that result in CSP fiesta again?
 			// Cannot remember.
-			if (e.data.url != null) {
-
-				// Sending buggyblob again.
-				// postMessage system sucks.
-				// Wish it were promises.
-				// "Fixing" this is not worth the time.
-				getDuration(e.data.url).then(duration => {
-					window.liveRecorder.worker.postMessage({
-						duration,
-						buggyBlob
-					})
-				}).catch(e => reject('liveRecorder: postmessage bugged', e))
-
-			} else {
-				resolve(e.data)
-			}
+			resolve(e.data)
 		}
-		window.liveRecorder.worker.postMessage({buggyBlob})
+		window.liveRecorder.worker.postMessage({buggyBlob, duration})
 	})
 }
-
-/**
- * Workers don't have access to DOM.
- * Don't know how else to get the video duration.
- * This is just for the video duration.
- */
-function getDuration(url) {
-	return new Promise (resolve => {
-		let video = document.createElement('video')
-		video.onloadedmetadata = () => {
-			const duration = video.duration
-			log('duration?', duration)
-			resolve(duration)
-		}
-		video.onerror = console.log
-
-		video.src = url
-	})
-}
-
 
