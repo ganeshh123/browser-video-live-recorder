@@ -1510,6 +1510,6 @@ function installCustomElements(window, polyfill) {'use strict';
   
 }
 
-if (!window.liveRecorder)
+if (window.liveRecorder == null)
 	installCustomElements(window, 'force')
 
