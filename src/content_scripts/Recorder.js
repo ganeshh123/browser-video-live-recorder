@@ -3,6 +3,10 @@ import HyperHTMLElement from 'hyperhtml-element/esm'
 import Popper from 'popper.js'
 import timer from 'minimal-timer'
 const EXT = '.webm'
+// Passed to MediaRecorder.start as `timeslice` variable.
+// Smaller chunksize is nice since, in case of errors, it has almost always stored something.
+// No losing 15mins of recording for one error.
+const CHUNKSIZE = 500
 
 /** 
  * All in all, the mozCaptureStream is (still) very buggy.
@@ -336,7 +340,12 @@ export default class LiveRecorder extends HyperHTMLElement {
 		 */
 		const stopped = new Promise((res, rej) => {
 			recorder.onstop = () => res(this.timer.stop())
-			recorder.onerror = rej
+			recorder.onerror = () => {
+				this.stop().then(() => {
+					this.timer.stop()
+					rej({ name:'Unknown error', message: 'unlucky.' })
+				})
+			}
 		})
 
 		// Possible error message gets overwritten by an error with recorder?
@@ -347,7 +356,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 		const started = new Promise(res => {
 			// Will throw (reject) if start fails.
 			recorder.onstart = () => res(this.timer.start())
-			recorder.start()
+			recorder.start(CHUNKSIZE)
 		})
 
 		this.data = data
@@ -368,6 +377,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 		if (e.name === 'SecurityError') {
 			error = 'Security error: open the video in its own tab.'
 		} else if (e.name && e.message) {
+			log( 'hello??', this.state, this.data )
 			error = 'Error. ' + e.name + ': ' + e.message
 		} else {
 			error = 'Undefined error. Stopped.'
@@ -433,6 +443,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 	}
 
 	async prepare() {
+		this.stop()
 		if ( this.data.length === 0 ) {
 			return
 		}
@@ -451,7 +462,7 @@ try{
 
 // eslint-disable-next-line
 function log(...args) {
-	// console.log('liverecorder', ...args)
+	console.log('liverecorder', ...args)
 }
 
 /**
