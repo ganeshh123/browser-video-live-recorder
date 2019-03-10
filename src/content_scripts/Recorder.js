@@ -47,7 +47,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 	 */
 	static get audioContext() {
 		if (window.liveRecorder == null) {
-			log('liveRecorder nulled??????')
+			//log('liveRecorder nulled??????')
 			window.liveRecorder = {}
 		}
 
@@ -59,7 +59,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 	}
 
 	created(){
-		log('hello?')
+		//log('hello?')
 		this.targetElement = document.querySelector(`[data-liverecorder="${this.target}"]`) 
 		//log(this.targetElement, this.state, this.setState, this.data)
 		if (this.targetElement != null) {
@@ -237,9 +237,9 @@ export default class LiveRecorder extends HyperHTMLElement {
 	}
 
 	async handleStatus() {
-		log(this.handleStatus, this.state)
+		//log(this.handleStatus, this.state)
 		if (this.state.error !== ''){
-			log('removing.')
+			//log('removing.')
 			this.setState({
 				error: ''
 			})
@@ -253,7 +253,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 	 * @param force bool Force a pause instead of dynamic pause/resume.
 	 */
 	async handlePause() {
-		log('pausing!')
+		//log('pausing!')
 
 		try {
 			// Pause and resume are glitched and don't emit events.
@@ -268,7 +268,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 					this.timer.resume()
 					break
 				default:
-					log('handlepause switch defaulted. state:', this.state)
+					//log('handlepause switch defaulted. state:', this.state)
 			}
 		} catch(e) {
 			console.error('something reasonably horrible happened in handlePause:',e)
@@ -277,31 +277,31 @@ export default class LiveRecorder extends HyperHTMLElement {
 	}
 
 	async handleStartStop(){
-		log('startstop')
-		log(this, this.targetElement, this.data, this.state)
-		log("HELLO?")
-		log('this',this.state)
+		//log('startstop')
+		////log(this, this.targetElement, this.data, this.state)
+		//log("HELLO?")
+		//log('this',this.state)
 		if (this.state == null)
 			await this.setState( this.defaultState )
-		log(this.state)
+		//log(this.state)
 		this.handleStatus()
-		log(this.state)
+		//log(this.state)
 		if (this.state.recorder.state  === 'inactive') {
-			log('start')
+			//log('start')
 			// Call stop first. No harm in doing so.
 			await this.stop()
 			this.start()
-			log('started', this.state)
+			//log('started', this.state)
 		} 
 		else {
-			log('stop')
+			//log('stop')
 			this.stop()
-			log('stopped', this.state)
+			//log('stopped', this.state)
 		}
 	}
 
 	async start() {
-		log('in start')
+		////log('in start')
 		// Capturing mutes audio (Firefox bug).
 		const capture = HTMLMediaElement.prototype.captureStream 
 						|| HTMLMediaElement.prototype.mozCaptureStream
@@ -312,7 +312,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 			const context = LiveRecorder.audioContext
 			const source = context.createMediaStreamSource(stream)
 			source.connect(context.destination)
-			log('pluggin')
+			//log('pluggin')
 			this.audioIsConnected = true
 		}
 
@@ -368,22 +368,22 @@ export default class LiveRecorder extends HyperHTMLElement {
 			.then(() => this.revokeExistingURL())
 			.then(() => this.prepare())
 			.catch(error => this.error(error))
-		log('start finished. state:', this.state)
+		//log('start finished. state:', this.state)
 	}
 
 	async error(e) {
-		log('error', e, e.name, e.message)
+		//log('error', e, e.name, e.message)
 		let error
 		if (e.name === 'SecurityError') {
 			error = 'Security error: open the video in its own tab.'
 		} else if (e.name && e.message) {
-			log( 'hello??', this.state, this.data )
+			//log( 'hello??', this.state, this.data )
 			error = 'Error. ' + e.name + ': ' + e.message
 		} else {
 			error = 'Undefined error. Stopped.'
 		}
 
-		log( this.state )
+		//log( this.state )
 
 		this.setState({
 			error
@@ -391,7 +391,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 	}
 
 	async stop() {
-		log('in stop', this.state)
+		//log('in stop', this.state)
 		if (this.state.recorder && this.state.recorder.state !== 'inactive') { 
 			this.state.recorder.stop()
 			this.render()
@@ -399,7 +399,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 	}
 
 	handleSave() {
-		log('handlesaved')
+		//log('handlesaved')
 		this.save()
 	}
 
@@ -411,7 +411,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 			processing: true,
 			preparing: false
 		})
-		log('preocessing')
+		//log('preocessing')
 		const buggyBlob = new Blob(this.data, { type: 'video/webm' })
 		// Send to worker.
 		const blob = await workIt(buggyBlob, this.timer.elapsedTime())
@@ -462,7 +462,7 @@ try{
 
 // eslint-disable-next-line
 function log(...args) {
-	console.log('liverecorder', ...args)
+	// console.log('liverecorder', ...args)
 }
 
 /**
