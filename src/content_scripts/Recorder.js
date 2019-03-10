@@ -1,9 +1,12 @@
 'use strict'
-import HyperHTMLElement from 'hyperhtml-element'
-//import ysFixWebmDuration from './fix-webm-duration.js'
+import HyperHTMLElement from 'hyperhtml-element/esm'
 import Popper from 'popper.js'
 import timer from 'minimal-timer'
 const EXT = '.webm'
+// Passed to MediaRecorder.start as `timeslice` variable.
+// Smaller chunksize is nice since, in case of errors, it has almost always stored something.
+// No losing 15mins of recording for one error.
+const CHUNKSIZE = 500
 
 /** 
  * All in all, the mozCaptureStream is (still) very buggy.
@@ -21,9 +24,16 @@ const EXT = '.webm'
  * Audio gets muted:
  * [2] https://bugzilla.mozilla.org/show_bug.cgi?id=1178751
  *
+ * MediaRecorder:
+ * Errors on seeking. Always.
+ * Stops recording on end, if looping. Should not do that, according to spec.
+ * Some of these could be problems from captureStream, too.
  *
  */
 
+/*
+ * Workflow: record -> pauses &plays -> stop -> "preparing" -> "processing" -> final
+ */
 export default class LiveRecorder extends HyperHTMLElement {
 
 	static get observedAttributes() {
@@ -32,24 +42,26 @@ export default class LiveRecorder extends HyperHTMLElement {
 
 	/**
 	 * Used for unmuting audio.
+	 * https://bugzilla.mozilla.org/show_bug.cgi?id=1178751
+	 * ^No movement in years.
 	 */
 	static get audioContext() {
 		if (window.liveRecorder == null) {
+			//log('liveRecorder nulled??????')
 			window.liveRecorder = {}
 		}
 
 		if (window.liveRecorder.context == null) {
 			window.liveRecorder.context = new AudioContext
-			// isWired instead. 2 elements mute one another now.
-			return window.liveRecorder.context 
 		}
 
 		return window.liveRecorder.context
 	}
 
 	created(){
+		//log('hello?')
 		this.targetElement = document.querySelector(`[data-liverecorder="${this.target}"]`) 
-	
+		//log(this.targetElement, this.state, this.setState, this.data)
 		if (this.targetElement != null) {
 			this._shadowRoot = this.attachShadow({mode: 'closed'})
 			this.popper = new Popper(this.targetElement, this, {
@@ -69,6 +81,13 @@ export default class LiveRecorder extends HyperHTMLElement {
 			}
 			this.fileTitle = title
 
+			// MediaRecorder doesn't do well with a lot of things; even this seems to be of no help.
+			// It'll just stop recording. Hopefully some day some day things will look up. (^-^)
+			// for ( let ev of [ 'ended', 'stalled', 'seeking', 'waiting', 'emptied' ] ) {
+			//  // Note: handlePause argument removed since making this.
+			// 	this.targetElement.addEventListener(ev, () => this.handlePause(true))
+			// }
+
 			this.render()
 		}
 	}
@@ -81,8 +100,12 @@ export default class LiveRecorder extends HyperHTMLElement {
 		const recording = recorder.state !== 'inactive'
 		const paused = recorder.state === 'paused'
 		const errored = error === '' ? 'live-recorder-none' : ''
+		// Using handleX style because things bug out otherwise. Maybe something to do with the polyfill.
 		return this.html`
 			<style>
+				:host(.live-recorder-none) {
+					display: none !important;
+				}
 				:host {
 					z-index: 2147483647;
 					display: block;
@@ -91,6 +114,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 					all: initial;
 					display: block;
 					font-family: "Twemoji Mozilla";
+					max-width: min-content;
 				}
 				.live-recorder-hidden {
 					visibility: hidden;
@@ -110,6 +134,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 					font-family: inherit;
 					font-size: 100%;
 					line-height: 1;
+					-moz-user-select: none;
 				}
 				.live-recorder-close {
 					margin-left: auto;
@@ -139,7 +164,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 
 					<button onclick=${this.handlePause}
 						type="button"
-						title=${paused ? 'Continue' : 'Pause' }
+						title=${paused ? 'Continue recording' : 'Pause recording' }
 						class=${!recording ? 'live-recorder-hidden' : ''}
 						>
 						${paused ? '▶️' : '⏸️'}
@@ -149,6 +174,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 						class=${!previewsAvailable ? 'live-recorder-hidden' : ''}
 						title="Preview"
 						href=${previewURL}
+						rel="noopener"
 						>
 						🎦
 					</a>
@@ -156,8 +182,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 					<button
 						type="button"
 						disabled=${processing}
-						data-call="save"
-						onclick=${this}
+						onclick=${this.handleSave}
 						title="Process metadata for downloading"
 						class=${!previewsAvailable ? 'live-recorder-hidden' : !preparing ? 'live-recorder-none' : ''}
 						>
@@ -174,9 +199,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 						${ processing ? '⏱️' : '⏏️' }
 					</a>
 
-
-
-					<button type="button" title="Close" data-call="close" onclick=${this}>
+					<button type="button" title="Close" onclick=${this.handleClose}>
 						❎
 					</button>
 
@@ -192,7 +215,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 	}
 
 	get defaultState() {
-		return {
+		return ({
 			downloadURL: '',
 			previewURL: '',
 			// Inserting duration tag into metadata takes a bit of time.
@@ -203,10 +226,10 @@ export default class LiveRecorder extends HyperHTMLElement {
 			recorder: { 
 				state: 'inactive'
 			}
-		}
+		})
 	}
 
-	async close() {
+	async handleClose() {
 		this.classList.add('live-recorder-none')
 		this.stop()
 		this.data=[]
@@ -214,8 +237,9 @@ export default class LiveRecorder extends HyperHTMLElement {
 	}
 
 	async handleStatus() {
+		//log(this.handleStatus, this.state)
 		if (this.state.error !== ''){
-			log('removing.')
+			//log('removing.')
 			this.setState({
 				error: ''
 			})
@@ -225,8 +249,12 @@ export default class LiveRecorder extends HyperHTMLElement {
 	/**
 	 * TODO: fix bug:
 	 * Start rec + pause spam made start rec button stuck.
+	 *
+	 * @param force bool Force a pause instead of dynamic pause/resume.
 	 */
-	async handlePause(e) {
+	async handlePause() {
+		//log('pausing!')
+
 		try {
 			// Pause and resume are glitched and don't emit events.
 			switch (this.state.recorder.state) {
@@ -235,11 +263,12 @@ export default class LiveRecorder extends HyperHTMLElement {
 					this.timer.stop()
 					break
 				case 'paused':
+					this.targetElement.play()
 					this.state.recorder.resume()
 					this.timer.resume()
 					break
 				default:
-					log('handlepause switch defaulted. state:', this.state)
+					//log('handlepause switch defaulted. state:', this.state)
 			}
 		} catch(e) {
 			console.error('something reasonably horrible happened in handlePause:',e)
@@ -248,19 +277,32 @@ export default class LiveRecorder extends HyperHTMLElement {
 	}
 
 	async handleStartStop(){
+		//log('startstop')
+		////log(this, this.targetElement, this.data, this.state)
+		//log("HELLO?")
+		//log('this',this.state)
+		if (this.state == null)
+			await this.setState( this.defaultState )
+		//log(this.state)
 		this.handleStatus()
+		//log(this.state)
 		if (this.state.recorder.state  === 'inactive') {
+			//log('start')
 			// Call stop first. No harm in doing so.
 			await this.stop()
 			this.start()
+			//log('started', this.state)
 		} 
 		else {
+			//log('stop')
 			this.stop()
+			//log('stopped', this.state)
 		}
 	}
 
 	async start() {
-		// Mutes audio (Firefox bug).
+		////log('in start')
+		// Capturing mutes audio (Firefox bug).
 		const capture = HTMLMediaElement.prototype.captureStream 
 						|| HTMLMediaElement.prototype.mozCaptureStream
 		const stream = capture.call(this.targetElement)
@@ -270,7 +312,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 			const context = LiveRecorder.audioContext
 			const source = context.createMediaStreamSource(stream)
 			source.connect(context.destination)
-			log('pluggin')
+			//log('pluggin')
 			this.audioIsConnected = true
 		}
 
@@ -281,10 +323,11 @@ export default class LiveRecorder extends HyperHTMLElement {
 		// Surprising, even after reading the docs...
 		const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' })
 		const data = []
-		recorder.ondataavailable = e => data.push(e.data)
+		recorder.ondataavailable = e => { log(e); data.push(e.data) }
 
 		// These don't work.
 		// https://bugzilla.mozilla.org/show_bug.cgi?id=1363915
+		// Update: they work now. v.65+. What was I supposed to do with em?
 		recorder.onpause = log
 		recorder.onresume = log
 
@@ -297,8 +340,12 @@ export default class LiveRecorder extends HyperHTMLElement {
 		 */
 		const stopped = new Promise((res, rej) => {
 			recorder.onstop = () => res(this.timer.stop())
-				
-			recorder.onerror = rej
+			recorder.onerror = () => {
+				this.stop().then(() => {
+					this.timer.stop()
+					rej({ name:'Unknown error', message: 'unlucky.' })
+				})
+			}
 		})
 
 		// Possible error message gets overwritten by an error with recorder?
@@ -309,7 +356,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 		const started = new Promise(res => {
 			// Will throw (reject) if start fails.
 			recorder.onstart = () => res(this.timer.start())
-			recorder.start()
+			recorder.start(CHUNKSIZE)
 		})
 
 		this.data = data
@@ -317,19 +364,26 @@ export default class LiveRecorder extends HyperHTMLElement {
 		// Triggers render.
 		started.then(() => this.setState({ recorder }))
 			.then(() => stopped)
+			.catch(error => this.error(error))
 			.then(() => this.revokeExistingURL())
 			.then(() => this.prepare())
 			.catch(error => this.error(error))
+		//log('start finished. state:', this.state)
 	}
 
 	async error(e) {
-		log('error', e, e.name, e.message)
+		//log('error', e, e.name, e.message)
 		let error
 		if (e.name === 'SecurityError') {
-			error = 'Security error: Open the video in its own tab.'
-		} else {
+			error = 'Security error: open the video in its own tab.'
+		} else if (e.name && e.message) {
+			//log( 'hello??', this.state, this.data )
 			error = 'Error. ' + e.name + ': ' + e.message
+		} else {
+			error = 'Undefined error. Stopped.'
 		}
+
+		//log( this.state )
 
 		this.setState({
 			error
@@ -337,10 +391,16 @@ export default class LiveRecorder extends HyperHTMLElement {
 	}
 
 	async stop() {
+		//log('in stop', this.state)
 		if (this.state.recorder && this.state.recorder.state !== 'inactive') { 
 			this.state.recorder.stop()
 			this.render()
 		}
+	}
+
+	handleSave() {
+		//log('handlesaved')
+		this.save()
 	}
 
 	/**
@@ -351,7 +411,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 			processing: true,
 			preparing: false
 		})
-		log('preocessing')
+		//log('preocessing')
 		const buggyBlob = new Blob(this.data, { type: 'video/webm' })
 		// Send to worker.
 		const blob = await workIt(buggyBlob, this.timer.elapsedTime())
@@ -383,6 +443,10 @@ export default class LiveRecorder extends HyperHTMLElement {
 	}
 
 	async prepare() {
+		this.stop()
+		if ( this.data.length === 0 ) {
+			return
+		}
 		this.setState({
 			preparing: true,
 			previewURL: URL.createObjectURL( new Blob(this.data, { type: 'video/webm' }) )
@@ -391,32 +455,25 @@ export default class LiveRecorder extends HyperHTMLElement {
 
 }
 
-// Define the element.
 try{
 	if (!window.liveRecorder)
 		LiveRecorder.define('live-recorder');
 }catch(e){console.error(e)}
 
+// eslint-disable-next-line
 function log(...args) {
-	//console.log(...args)
+	// console.log('liverecorder', ...args)
 }
 
 /**
  * Messaging between worker to create a good blob.
  * Good = duration fixed.
+ * Before changing this, consider that there are a lot of CSP issues.
  */
 function workIt(buggyBlob, duration){
 	log('duration', duration)
-	return new Promise((resolve, reject) => {
+	return new Promise((resolve) => {
 		window.liveRecorder.worker.onmessage = e => {
-			// url is the base64 url created by worker.
-			// Can't load the blob directly because of CSP.
-			// ^"moz-extension:.." security errors.
-			// Silly.
-			// TODO: think about moving this procedure to bg script
-			// and using the blob for src there. Save 1 decode round.
-			// ^But doesn't that result in CSP fiesta again?
-			// Cannot remember.
 			resolve(e.data)
 		}
 		window.liveRecorder.worker.postMessage({buggyBlob, duration})
