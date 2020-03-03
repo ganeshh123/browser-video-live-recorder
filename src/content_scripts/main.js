@@ -11,24 +11,16 @@ import LiveRecorder from './Recorder.js'
 	}
 
 	if (window.liveRecorder != null && window.liveRecorder.injected === true) {
-		const liverecorders = document.querySelectorAll('live-recorder')
-		Array.prototype.forEach.call(liverecorders, el => el.classList.remove('live-recorder-none'))
-		Array.prototype.forEach.call(elements, el => {
-			if (!el.hasAttribute('data-liverecorder')) {
-				addRecorder(el)
-			}
-		})
+		Array.prototype.forEach.call(elements, addRecorder)
 		return
 	}
 
 	if (window.liveRecorder == null) {
 		window.liveRecorder = {}
+		window.liveRecorder.uniqueID = 1
+		window.liveRecorder.injected = true
+		window.liveRecorder.worker = new Worker(browser.extension.getURL('') + 'live-recorder-worker-bundle.js')
 	}
-
-	window.liveRecorder.uniqueID = 0
-	window.liveRecorder.injected = true
-
-	window.liveRecorder.worker = window.liveRecorder.worker || new Worker(browser.extension.getURL('') + 'live-recorder-worker-bundle.js')
 
 	Array.prototype.forEach.call(elements, addRecorder)
 
@@ -46,12 +38,11 @@ import LiveRecorder from './Recorder.js'
 	}
 
 	function showLiveRecorder(target) {
-		const liverecorder = document.querySelectorAll(`live-recorder[target="${target}"]`)
+		const liverecorder = document.querySelector(`live-recorder[target="${target}"]`)
 		liverecorder.classList.remove('live-recorder-none')
 	}
 	function createRecorder(mediaElement) {
 		let rec = new LiveRecorder
-		// console.log('liverecorder: CREATING FOR: ', mediaElement, rec)
 		mediaElement.dataset.liverecorder = window.liveRecorder.uniqueID
 		rec.setAttribute('target', window.liveRecorder.uniqueID++)
 		document.body.appendChild(rec)

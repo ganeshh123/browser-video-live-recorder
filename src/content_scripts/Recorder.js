@@ -479,9 +479,8 @@ export default class LiveRecorder extends HyperHTMLElement {
 }
 
 try{
-	if (!window.liveRecorder)
-		LiveRecorder.define('live-recorder');
-}catch(e){console.error(e)}
+	LiveRecorder.define('live-recorder');
+} catch(e) { /* nop */ }
 
 // eslint-disable-next-line
 function log(...args) {
