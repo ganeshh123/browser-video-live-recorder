@@ -12,15 +12,15 @@
   "author": "",
   "license": "",
   "devDependencies": {
-    "eslint": "^5.9.0",
-    "rollup": "^0.67.0",
-    "rollup-plugin-commonjs": "^9.2.0",
+    "eslint": "^5.16.0",
+    "rollup": "^0.67.4",
+    "rollup-plugin-commonjs": "^9.3.4",
     "rollup-plugin-node-resolve": "^3.4.0"
   },
   "dependencies": {
-    "hyperhtml": "^2.16.4",
-    "hyperhtml-element": "^3.1.0",
+    "hyperhtml": "^2.32.2",
+    "hyperhtml-element": "^3.12.3",
     "minimal-timer": "^4.1.0",
-    "popper.js": "^1.14.5"
+    "popper.js": "^1.16.1"
   }
 }

@@ -101,6 +101,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 		const recording = recorder.state !== 'inactive'
 		const paused = recorder.state === 'paused'
 		const errored = error === '' ? 'live-recorder-none' : ''
+		const realError = !error.startsWith('Whoops');
 		// Using handleX style because things bug out otherwise. Maybe something to do with the polyfill.
 		return this.html`
 			<style>
@@ -202,6 +203,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 						class=${[(!downloadsAvailable && !processing) ? 'live-recorder-none' : '',
 								processing ? 'live-recorder-disabled' : ''].join(' ')}
 						download=${title}
+						id="live-recorder-download-button"
 						title=${processing ? 'Processing...' :
 							('Download '+title+'.\nMiddle click to open in a new tab.')}
 						>
@@ -216,7 +218,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 
 				<div class=${[errored, 'live-recorder-inner'].join(' ')}>
 					<span class="color-white">
-						${error} <a class="text-link" href=${this.targetElement.src} target="_blank">Open in new tab</a>
+						${error} <a class=${"text-link" + (realError ? '' : ' live-recorder-none') } href=${this.targetElement.src} target="_blank">Open in new tab</a>
 					</span>
 				</div>
 			</div>
@@ -291,7 +293,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 		//log("HELLO?")
 		//log('this',this.state)
 		if (this.state == null)
-			await this.setState( this.defaultState )
+			this.setState( this.defaultState )
 		//log(this.state)
 		this.handleStatus()
 		log(this.state, this.state.recorder.state)
@@ -433,7 +435,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 		if (time < LONG_DURATION) {
 			blob = await workIt(buggyBlob, time)
 		} else {
-			this.error(new Error('File is too big to process duration metadata.'))
+			this.error({ message: 'File is too big to process duration metadata.', name: 'Whoops'})
 		}
 		// Creating the url in the worker results in CSP fiesta.
 		// "Cannot load from moz-exte...."
@@ -441,8 +443,9 @@ export default class LiveRecorder extends HyperHTMLElement {
 		this.setState({
 			downloadURL,
 			processing: false
-		})	
-		
+		});
+		this._shadowRoot.querySelector('#live-recorder-download-button').click();
+		// setTimeout(() => console.log('ey', this._shadowRoot.querySelector, this._shadowRoot.querySelector('#live-recorder-download-button').click()), 100);
 	}
 
 	/**
