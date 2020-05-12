@@ -1,6 +1,6 @@
 {
   "name": "Live Recorder",
-  "version": "1.6",
+  "version": "2.0",
   "manifest_version": 2,
   "description": "Record audio and video in real time.",
   "homepage_url": "https://gitlab.com/losnappas/Live-Recorder",
