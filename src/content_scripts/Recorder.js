@@ -1,13 +1,13 @@
 /**
  * I've no clue what's going on anymore!!!
  */
-import { ReadableStream, WritableStream, TransformStream } from 'web-streams-polyfill/ponyfill/es6'
+import { WritableStream, TransformStream } from 'web-streams-polyfill/ponyfill/es6'
 import HyperHTMLElement from 'hyperhtml-element/esm'
 import Popper from 'popper.js'
 import streamsaver from 'streamsaver'
 import filesize from 'pretty-bytes'
-streamsaver.ReadableStream = ReadableStream
 streamsaver.WritableStream = WritableStream
+streamsaver.TransformStream = TransformStream
 const EXT = '.webm'
 // Passed to MediaRecorder.start as `timeslice` variable.
 // Smaller chunksize is nice since, in case of errors, it has almost always stored something.
@@ -32,13 +32,13 @@ const CHUNKSIZE = 500
  *
  * MediaRecorder:
  * Errors on seeking. Always.
- * Stops recording on end, if looping. Should not do that, according to spec.
+ * Stops recording on end, if looping. Should not do that, according to spec. -- This has been fixed.
  * Some of these could be problems from captureStream, too.
  *
  */
 
 /*
- * Workflow: record -> stop || close -> open dl
+ * Workflow: record -> (stop | close) -> open dl dialog
  */
 export default class LiveRecorder extends HyperHTMLElement {
 
@@ -101,7 +101,6 @@ export default class LiveRecorder extends HyperHTMLElement {
 		const size = this.state.size || 0
 		const recording = recorder.state !== 'inactive'
 		const errored = error === '' ? 'live-recorder-none' : ''
-		const realError = !error.startsWith('Whoops');
 		// Using handleX style because things bug out otherwise. Maybe something to do with the polyfill.
 		return this.html`
 			<style>
@@ -185,9 +184,9 @@ export default class LiveRecorder extends HyperHTMLElement {
 
 				<div class="size live-recorder-inner" id="file-size">${filesize(size)}</div>
 
-				<div class=${[errored, 'live-recorder-inner'].join(' ')}>
+				<div class=${[errored, 'live-recorder-inner', 'size'].join(' ')}>
 					<span class="color-white">
-						${error} <a class=${"text-link" + (realError ? '' : ' live-recorder-none') } href=${this.targetElement.src} target="_blank">Open in new tab</a>
+						${error} <a class="text-link" href=${this.targetElement.src} target="_blank">Open in new tab</a>
 					</span>
 				</div>
 			</div>
@@ -210,7 +209,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 	}
 
 	async handleStatus() {
-		//log(this.handleStatus, this.state)
+		log(this.handleStatus, this.state)
 		if (this.state.error !== ''){
 			//log('removing.')
 			this.setState({
@@ -220,35 +219,25 @@ export default class LiveRecorder extends HyperHTMLElement {
 	}
 
 	async handleStartStop(){
-		// log('startstop')
-		// log(this, this.targetElement, this.data, this.state)
-		//log("HELLO?")
-		//log('this',this.state)
+		log('handleStartStop')
 		if (this.state == null)
 			this.setState( this.defaultState )
-		//log(this.state)
 		this.handleStatus()
-		log(this.state, this.state.recorder.state)
 		if (this.state.recorder.state  === 'inactive') {
-			// log('start')
-			// Call stop first. No harm in doing so.
 			await this.stop()
 			await this.start()
-			// log('started', this.state)
-		} 
-		else {
-			//log('stop')
+		} else {
 			await this.stop()
-			//log('stopped', this.state)
 		}
 	}
 
 	async start() {
-		// log('in start')
+		log('in start')
 		// Capturing mutes audio (Firefox bug).
 		const capture = HTMLMediaElement.prototype.captureStream 
 						|| HTMLMediaElement.prototype.mozCaptureStream
 		const stream = capture.call(this.targetElement)
+		log(stream, 'stream')
 		// "Unmute".
 		// Only need to do this once.
 		if (!this.audioIsConnected) {
@@ -275,7 +264,6 @@ export default class LiveRecorder extends HyperHTMLElement {
 		const writer = writable.getWriter()
 		const title = this.fileTitle + (this.fileTitle.endsWith(EXT) ? '' : EXT)
 		readable.pipeTo(streamsaver.createWriteStream(title))
-
 		// Not sure what this is about; can't see it do anything.
 		// function abort() {
 		// 	writable.abort()
@@ -315,6 +303,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 		 */
 		const stopped = new Promise((res, rej) => {
 			recorder.onstop = () => {
+				log('recorder stopped')
 				// Mutes audio on stop because of the audio sink bug.
 				for (const track of stream.getVideoTracks()) {
 					track.stop()
@@ -323,7 +312,8 @@ export default class LiveRecorder extends HyperHTMLElement {
 				// window.removeEventListener('unload', abort)
 				setTimeout(() => res(writer.close()), 100)
 			}
-			recorder.onerror = () => {
+			recorder.onerror = (e) => {
+				log('recorder errored', e)
 				for (const track of stream.getVideoTracks()) {
 					track.stop()
 				}
@@ -341,10 +331,15 @@ export default class LiveRecorder extends HyperHTMLElement {
 		//  -> error2 from recorder -> overwrite error 1.
 		await this.targetElement.play().catch(e => this.error(e))
 
-		const started = new Promise(res => {
+		const started = new Promise((resolve, reject) => {
+			log('started')
 			// Will throw (reject) if start fails.
-			recorder.onstart = () => res()
-			recorder.start(CHUNKSIZE)
+			recorder.onstart = () => resolve()
+			try {
+				recorder.start(CHUNKSIZE)
+			} catch(e) {
+				reject(e)
+			}
 		})
 
 		// Triggers render.
@@ -355,18 +350,15 @@ export default class LiveRecorder extends HyperHTMLElement {
 	}
 
 	async error(e) {
-		//log('error', e, e.name, e.message)
+		log('error', e, e.name, e.message)
 		let error
 		if (e.name === 'SecurityError') {
 			error = 'Security error: open the video in its own tab.'
 		} else if (e.name && e.message) {
-			//log( 'hello??', this.state, this.data )
 			error = '' + e.name + ': ' + e.message
 		} else {
 			error = 'Undefined error. Stopped.'
 		}
-
-		//log( this.state )
 
 		this.setState({
 			error
@@ -374,7 +366,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 	}
 
 	async stop() {
-		//log('in stop', this.state)
+		log('in stop', this.state)
 		if (this.state.recorder && this.state.recorder.state !== 'inactive') {
 			this.state.recorder.stop()
 			this.render()
@@ -388,5 +380,5 @@ try{
 
 // eslint-disable-next-line
 function log(...args) {
-	// console.log('liverecorder', ...args)
+	console.log('liverecorder', ...args)
 }
