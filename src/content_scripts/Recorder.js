@@ -332,12 +332,26 @@ export default class LiveRecorder extends HyperHTMLElement {
 		await this.targetElement.play().catch(e => this.error(e))
 
 		const started = new Promise((resolve, reject) => {
-			log('started')
+			log('started', recorder)
+			let resolved = false
+			// This is to fix the 1frame webm bug described in readme.
+			setTimeout(() => {
+				log('timeouted in started', recorder)
+				if (!resolved && recorder.state === 'recording') {
+					this.error({
+						name: 'Firefox bug',
+						message: 'Seek the video to fix the filesize tracker.'
+					})
+					resolve()
+				}
+				// Assume after 1sec that it's a buggy thing.
+			}, 1000)
 			// Will throw (reject) if start fails.
-			recorder.onstart = () => resolve()
+			recorder.onstart = () => resolve(resolved = true)
 			try {
 				recorder.start(CHUNKSIZE)
 			} catch(e) {
+				resolved = true
 				reject(e)
 			}
 		})
