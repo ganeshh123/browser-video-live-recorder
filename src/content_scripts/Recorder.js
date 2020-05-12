@@ -394,5 +394,5 @@ try{
 
 // eslint-disable-next-line
 function log(...args) {
-	console.log('liverecorder', ...args)
+	// console.log('liverecorder', ...args)
 }
