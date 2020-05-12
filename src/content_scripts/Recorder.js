@@ -33,6 +33,7 @@ const CHUNKSIZE = 500
  * MediaRecorder:
  * Errors on seeking. Always.
  * Stops recording on end, if looping. Should not do that, according to spec. -- This has been fixed.
+ * Audio gets lost if media isn't looping, but not otherwise.
  * Some of these could be problems from captureStream, too.
  *
  */
@@ -75,7 +76,6 @@ export default class LiveRecorder extends HyperHTMLElement {
 			})
 
 			// this.data doesn't affect render.
-			this.data = []
 			this.audioIsConnected = false
 
 			let title = this.targetElement.src.split('/')
@@ -246,7 +246,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 				const context = LiveRecorder.audioContext
 				const source = context.createMediaStreamSource(stream)
 				source.connect(context.destination)
-				log('pluggin')
+				log('pluggin', source)
 				this.audioIsConnected = true
 			} catch(e) {
 				// nothing
@@ -338,10 +338,6 @@ export default class LiveRecorder extends HyperHTMLElement {
 			setTimeout(() => {
 				log('timeouted in started', recorder)
 				if (!resolved && recorder.state === 'recording') {
-					this.error({
-						name: 'Firefox bug',
-						message: 'Seek the video to fix the filesize tracker.'
-					})
 					resolve()
 				}
 				// Assume after 1sec that it's a buggy thing.

@@ -32,6 +32,8 @@ Webm framerate, bitrate, and sample rate are not same as original. Filesizes blo
 
 1 frame video is very buggy. (Test webm.)[https://gitlab.com/losnappas/live-recorder/uploads/6d18fe0066e26a0d49acf1f8a85e3892/wtf.webm] But it starts recording after you seek o_o. If you spam the "record" button, it actually starts recording many times!!! And won't stop when you stop!!!!!!!
 
+Audio gets lost at the end if media isn't looping, but not otherwise.
+
 ## License
 
 Unlicense - https://unlicense.org/
