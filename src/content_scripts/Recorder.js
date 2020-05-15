@@ -78,7 +78,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 			// this.data doesn't affect render.
 			this.audioIsConnected = false
 
-			let title = this.targetElement.src.split('/')
+			let title = (this.targetElement.src || location.pathname).split('/')
 			title = title[title.length-1]
 			if (title === '') {
 				title='unnamed'
