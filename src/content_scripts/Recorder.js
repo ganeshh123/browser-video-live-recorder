@@ -1,13 +1,18 @@
+/**
+ * I've no clue what's going on anymore!!!
+ */
+import { WritableStream, TransformStream } from 'web-streams-polyfill/ponyfill/es6'
 import HyperHTMLElement from 'hyperhtml-element/esm'
 import Popper from 'popper.js'
-import timer from 'minimal-timer'
+import streamsaver from 'streamsaver'
+import filesize from 'pretty-bytes'
+streamsaver.WritableStream = WritableStream
+streamsaver.TransformStream = TransformStream
 const EXT = '.webm'
 // Passed to MediaRecorder.start as `timeslice` variable.
 // Smaller chunksize is nice since, in case of errors, it has almost always stored something.
 // No losing 15mins of recording for one error.
 const CHUNKSIZE = 500
-// How long is too long for worker? Let's say 10min.
-const LONG_DURATION = 10 * 60 * 1000
 
 /** 
  * All in all, the mozCaptureStream is (still) very buggy.
@@ -27,13 +32,14 @@ const LONG_DURATION = 10 * 60 * 1000
  *
  * MediaRecorder:
  * Errors on seeking. Always.
- * Stops recording on end, if looping. Should not do that, according to spec.
+ * Stops recording on end, if looping. Should not do that, according to spec. -- This has been fixed.
+ * Audio gets lost if media isn't looping, but not otherwise.
  * Some of these could be problems from captureStream, too.
  *
  */
 
 /*
- * Workflow: record -> pauses &plays -> stop -> "preparing" -> "processing" -> final
+ * Workflow: record -> (stop | close) -> open dl dialog
  */
 export default class LiveRecorder extends HyperHTMLElement {
 
@@ -70,12 +76,9 @@ export default class LiveRecorder extends HyperHTMLElement {
 			})
 
 			// this.data doesn't affect render.
-			this.data = []
 			this.audioIsConnected = false
-			// Things don't need 'new' "now"?
-			this.timer = timer()
 
-			let title = this.targetElement.src.split('/')
+			let title = (this.targetElement.src || location.pathname).split('/')
 			title = title[title.length-1]
 			if (title === '') {
 				title='unnamed'
@@ -94,14 +97,10 @@ export default class LiveRecorder extends HyperHTMLElement {
 	}
 
 	render() {
-		const {recorder, downloadURL, error, processing, preparing, previewURL} = this.state
-		const downloadsAvailable = downloadURL !== ''
-		const previewsAvailable = previewURL !== ''
-		const title = this.fileTitle + (this.fileTitle.endsWith(EXT) ? '' : EXT)
+		const {recorder,error} = this.state
+		const size = this.state.size || 0
 		const recording = recorder.state !== 'inactive'
-		const paused = recorder.state === 'paused'
 		const errored = error === '' ? 'live-recorder-none' : ''
-		const realError = !error.startsWith('Whoops');
 		// Using handleX style because things bug out otherwise. Maybe something to do with the polyfill.
 		return this.html`
 			<style>
@@ -119,6 +118,11 @@ export default class LiveRecorder extends HyperHTMLElement {
 					max-width: -moz-min-content;
 					max-width: min-content;
 				}
+				.size {
+					font-family: sans-serif;
+					color: white;
+					padding: 5px;
+				}
 				.live-recorder-hidden {
 					visibility: hidden;
 				}
@@ -135,7 +139,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 					text-decoration: none;
 					cursor: pointer;
 					font-family: inherit;
-					font-size: 100%;
+					font-size: 25px;
 					line-height: 1;
 					-moz-user-select: none;
 					user-select: none;
@@ -172,53 +176,17 @@ export default class LiveRecorder extends HyperHTMLElement {
 						${ !recording ? '⏺️' : '⏹️' }
 					</button>
 
-					<button onclick=${this.handlePause}
-						type="button"
-						title=${paused ? 'Continue recording' : 'Pause recording' }
-						class=${!recording ? 'live-recorder-hidden' : ''}
-						>
-						${paused ? '▶️' : '⏸️'}
-					</button>
-
-					<a
-						class=${!previewsAvailable ? 'live-recorder-hidden' : ''}
-						title="Preview"
-						href=${previewURL}
-						rel="noopener"
-						>
-						🎦
-					</a>
-
-					<button
-						type="button"
-						disabled=${processing}
-						onclick=${this.handleSave}
-						title="Process metadata for downloading"
-						class=${!previewsAvailable ? 'live-recorder-hidden' : !preparing ? 'live-recorder-none' : ''}
-						>
-						🔽
-					</button>
-					<!-- <a> around <button> is not valid xhtml x.x -->
-					<a href=${downloadURL} 
-						class=${[(!downloadsAvailable && !processing) ? 'live-recorder-none' : '',
-								processing ? 'live-recorder-disabled' : ''].join(' ')}
-						download=${title}
-						id="live-recorder-download-button"
-						title=${processing ? 'Processing...' :
-							('Download '+title+'.\nMiddle click to open in a new tab.')}
-						>
-						${ processing ? '⏱️' : '⏏️' }
-					</a>
-
 					<button type="button" title="Close" onclick=${this.handleClose}>
 						❎
 					</button>
 
 				</div>
 
-				<div class=${[errored, 'live-recorder-inner'].join(' ')}>
+				<div class="size live-recorder-inner" id="file-size">${filesize(size)}</div>
+
+				<div class=${[errored, 'live-recorder-inner', 'size'].join(' ')}>
 					<span class="color-white">
-						${error} <a class=${"text-link" + (realError ? '' : ' live-recorder-none') } href=${this.targetElement.src} target="_blank">Open in new tab</a>
+						${error} <a class="text-link" href=${this.targetElement.src} target="_blank">Open in new tab</a>
 					</span>
 				</div>
 			</div>
@@ -227,12 +195,7 @@ export default class LiveRecorder extends HyperHTMLElement {
 
 	get defaultState() {
 		return ({
-			downloadURL: '',
-			previewURL: '',
-			// Inserting duration tag into metadata takes a bit of time.
-			processing: false,
-			// For the down arrow button.
-			preparing: false,
+			size: 0,
 			error: '',
 			recorder: { 
 				state: 'inactive'
@@ -243,12 +206,10 @@ export default class LiveRecorder extends HyperHTMLElement {
 	async handleClose() {
 		this.classList.add('live-recorder-none')
 		this.stop()
-		this.data=[]
-		this.revokeExistingURL()
 	}
 
 	async handleStatus() {
-		//log(this.handleStatus, this.state)
+		log(this.handleStatus, this.state)
 		if (this.state.error !== ''){
 			//log('removing.')
 			this.setState({
@@ -257,66 +218,26 @@ export default class LiveRecorder extends HyperHTMLElement {
 		}
 	}
 
-	/**
-	 * TODO: fix bug:
-	 * Start rec + pause spam made start rec button stuck.
-	 */
-	async handlePause() {
-		//log('pausing!')
-
-		try {
-			// Pause and resume are glitched and don't emit events.
-			switch (this.state.recorder.state) {
-				case 'recording':
-					this.state.recorder.pause()
-					this.timer.stop()
-					break
-
-				case 'paused':
-					this.targetElement.play()
-					this.state.recorder.resume()
-					this.timer.resume()
-					break
-
-				default:
-					//log('handlepause switch defaulted. state:', this.state)
-			}
-		} catch(e) {
-			console.error('Live Recoder: something reasonably horrible happened in handlePause:',e)
-		}
-		this.render()
-	}
-
 	async handleStartStop(){
-		// log('startstop')
-		// log(this, this.targetElement, this.data, this.state)
-		//log("HELLO?")
-		//log('this',this.state)
+		log('handleStartStop')
 		if (this.state == null)
 			this.setState( this.defaultState )
-		//log(this.state)
 		this.handleStatus()
-		log(this.state, this.state.recorder.state)
 		if (this.state.recorder.state  === 'inactive') {
-			// log('start')
-			// Call stop first. No harm in doing so.
 			await this.stop()
 			await this.start()
-			// log('started', this.state)
-		} 
-		else {
-			//log('stop')
+		} else {
 			await this.stop()
-			//log('stopped', this.state)
 		}
 	}
 
 	async start() {
-		// log('in start')
+		log('in start')
 		// Capturing mutes audio (Firefox bug).
 		const capture = HTMLMediaElement.prototype.captureStream 
 						|| HTMLMediaElement.prototype.mozCaptureStream
 		const stream = capture.call(this.targetElement)
+		log(stream, 'stream')
 		// "Unmute".
 		// Only need to do this once.
 		if (!this.audioIsConnected) {
@@ -325,12 +246,33 @@ export default class LiveRecorder extends HyperHTMLElement {
 				const context = LiveRecorder.audioContext
 				const source = context.createMediaStreamSource(stream)
 				source.connect(context.destination)
-				log('pluggin')
+				log('pluggin', source)
 				this.audioIsConnected = true
 			} catch(e) {
 				// nothing
 			}
 		}
+
+		// Note to self: MediaStreamTrack.applyConstraints doesn't work on these.
+		// All I get is "OverConstrainedError".
+		// No changing of video fps that way.
+
+		// https://github.com/jimmywarting/StreamSaver.js/blob/master/examples/media-stream.html
+		const { readable, writable } = new TransformStream({
+			transform: (chunk, ctrl) => chunk.arrayBuffer().then(b => ctrl.enqueue(new Uint8Array(b)))
+		})
+		const writer = writable.getWriter()
+		const title = this.fileTitle + (this.fileTitle.endsWith(EXT) ? '' : EXT)
+		readable.pipeTo(streamsaver.createWriteStream(title))
+		// Not sure what this is about; can't see it do anything.
+		// function abort() {
+		// 	writable.abort()
+		// }
+		// window.addEventListener('unload', abort)
+
+		this.setState({
+			size: 0,
+		})
 
 		// Apparently recorder types on android = no-go?
 		// https://github.com/streamproc/MediaStreamRecorder/blob/master/MediaStreamRecorder.js#L1118
@@ -338,8 +280,13 @@ export default class LiveRecorder extends HyperHTMLElement {
 		// MediaRecorder actually converts filetypes with the mimetype argument.
 		// Surprising, even after reading the docs...
 		const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' })
-		const data = []
-		recorder.ondataavailable = e => { log(e); data.push(e.data) }
+		recorder.ondataavailable = e => {
+			this.setState({
+				size: this.state.size + e.data.size
+			})
+			writer.write(e.data)
+		}
+
 
 		// These don't work.
 		// https://bugzilla.mozilla.org/show_bug.cgi?id=1363915
@@ -355,8 +302,24 @@ export default class LiveRecorder extends HyperHTMLElement {
 		 * by the website.
 		 */
 		const stopped = new Promise((res, rej) => {
-			recorder.onstop = () => res(this.timer.stop())
-			recorder.onerror = () => {
+			recorder.onstop = () => {
+				log('recorder stopped')
+				// Mutes audio on stop because of the audio sink bug.
+				for (const track of stream.getVideoTracks()) {
+					track.stop()
+				}
+				// Not sure what this is about; can't see it do anything.
+				// window.removeEventListener('unload', abort)
+				setTimeout(() => res(writer.close()), 100)
+			}
+			recorder.onerror = (e) => {
+				log('recorder errored', e)
+				for (const track of stream.getVideoTracks()) {
+					track.stop()
+				}
+				setTimeout(() => res(writer.close()), 100)
+				// Not sure what this is about; can't see it do anything.
+				// window.removeEventListener('unload', abort)
 				this.stop().then(() => {
 					rej({ name:'Unknown error', message: 'unlucky.' })
 				})
@@ -368,37 +331,44 @@ export default class LiveRecorder extends HyperHTMLElement {
 		//  -> error2 from recorder -> overwrite error 1.
 		await this.targetElement.play().catch(e => this.error(e))
 
-		const started = new Promise(res => {
+		const started = new Promise((resolve, reject) => {
+			log('started', recorder)
+			let resolved = false
+			// This is to fix the 1frame webm bug described in readme.
+			setTimeout(() => {
+				log('timeouted in started', recorder)
+				if (!resolved && recorder.state === 'recording') {
+					resolve()
+				}
+				// Assume after 1sec that it's a buggy thing.
+			}, 1000)
 			// Will throw (reject) if start fails.
-			recorder.onstart = () => res(this.timer.start())
-			recorder.start(CHUNKSIZE)
+			recorder.onstart = () => resolve(resolved = true)
+			try {
+				recorder.start(CHUNKSIZE)
+			} catch(e) {
+				resolved = true
+				reject(e)
+			}
 		})
-
-		this.data = data
 
 		// Triggers render.
 		started.then(() => this.setState({ recorder }))
 			.then(() => stopped)
 			.catch(error => this.error(error))
-			.then(() => this.revokeExistingURL())
-			.then(() => this.prepare())
-			.catch(error => this.error(error))
 		log('start finished. state:', this.state)
 	}
 
 	async error(e) {
-		//log('error', e, e.name, e.message)
+		log('error', e, e.name, e.message)
 		let error
 		if (e.name === 'SecurityError') {
 			error = 'Security error: open the video in its own tab.'
 		} else if (e.name && e.message) {
-			//log( 'hello??', this.state, this.data )
 			error = '' + e.name + ': ' + e.message
 		} else {
 			error = 'Undefined error. Stopped.'
 		}
-
-		//log( this.state )
 
 		this.setState({
 			error
@@ -406,79 +376,12 @@ export default class LiveRecorder extends HyperHTMLElement {
 	}
 
 	async stop() {
-		//log('in stop', this.state)
-		if (this.state.recorder && this.state.recorder.state !== 'inactive') { 
-			this.timer.stop()
+		log('in stop', this.state)
+		if (this.state.recorder && this.state.recorder.state !== 'inactive') {
 			this.state.recorder.stop()
 			this.render()
 		}
 	}
-
-	handleSave() {
-		//log('handlesaved')
-		this.save()
-	}
-
-	/**
-	 * Wire up the save button.
-	 */
-	async save() {
-		this.setState({
-			processing: true,
-			preparing: false
-		})
-		//log('preocessing')
-		const buggyBlob = new Blob(this.data, { type: 'video/webm' })
-		const time = this.timer.elapsedTime()
-		let blob = buggyBlob;
-		// Send to worker, unless duration is long, which causes worker to work forever.
-		if (time < LONG_DURATION) {
-			blob = await workIt(buggyBlob, time)
-		} else {
-			this.error({ message: 'File is too big to process duration metadata.', name: 'Whoops'})
-		}
-		// Creating the url in the worker results in CSP fiesta.
-		// "Cannot load from moz-exte...."
-		const downloadURL = URL.createObjectURL(blob)
-		this.setState({
-			downloadURL,
-			processing: false
-		});
-		this._shadowRoot.querySelector('#live-recorder-download-button').click();
-		// setTimeout(() => console.log('ey', this._shadowRoot.querySelector, this._shadowRoot.querySelector('#live-recorder-download-button').click()), 100);
-	}
-
-	/**
-	 * Revoke to save memory.
-	 */
-	async revokeExistingURL() {
-		if (this.state.downloadURL !== '' || this.state.previewURL !== '') {
-			URL.revokeObjectURL(this.state.downloadURL)
-			URL.revokeObjectURL(this.state.previewURL)
-			this.setState({
-				downloadURL: '',
-				previewURL: ''
-			})
-			//Next line bugs out.
-			//Fixing it is not worth the time.(?)
-			//this.data = []
-		}
-	}
-
-	async prepare() {
-		this.stop()
-		log('preview creation!', this.data.length)
-		if ( this.data.length === 0 ) {
-			return
-		}
-		const previewURL = URL.createObjectURL( new Blob(this.data, { type: 'video/webm' }) )
-		log('preview creation!', previewURL)
-		this.setState({
-			preparing: true,
-			previewURL
-		})
-	}
-
 }
 
 try{
@@ -489,19 +392,3 @@ try{
 function log(...args) {
 	// console.log('liverecorder', ...args)
 }
-
-/**
- * Messaging between worker to create a good blob.
- * Good = duration fixed.
- * Before changing this, consider that there are a lot of CSP issues.
- */
-function workIt(buggyBlob, duration){
-	// log('duration', duration)
-	return new Promise((resolve) => {
-		window.liveRecorder.worker.onmessage = e => {
-			resolve(e.data)
-		}
-		window.liveRecorder.worker.postMessage({buggyBlob, duration})
-	})
-}
-

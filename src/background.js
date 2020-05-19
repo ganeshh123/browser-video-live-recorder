@@ -5,7 +5,7 @@ async function inject() {
 	for (let file of files) {
 		await browser.tabs.executeScript({
 			file: file
-		}).catch(console.error)
+		}).catch(e => console.error('WHAT?', e))
 	}
 }
 

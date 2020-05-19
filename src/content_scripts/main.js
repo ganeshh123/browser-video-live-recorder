@@ -1,5 +1,6 @@
 import './undoer.js'
 import '../lib/pony/index.js'
+window.liveRecorder = window.liveRecorder || { polyfill: true }
 import LiveRecorder from './Recorder.js'
 
 ;(function() {
@@ -10,16 +11,14 @@ import LiveRecorder from './Recorder.js'
 		return
 	}
 
-	if (window.liveRecorder != null && window.liveRecorder.injected === true) {
+	if (window.liveRecorder.injected === true) {
 		Array.prototype.forEach.call(elements, addRecorder)
 		return
 	}
 
-	if (window.liveRecorder == null) {
-		window.liveRecorder = {}
+	if (window.liveRecorder.injected !== true) {
 		window.liveRecorder.uniqueID = 1
 		window.liveRecorder.injected = true
-		window.liveRecorder.worker = new Worker(browser.extension.getURL('') + 'live-recorder-worker-bundle.js')
 	}
 
 	Array.prototype.forEach.call(elements, addRecorder)
